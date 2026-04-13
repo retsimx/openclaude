@@ -39,6 +39,27 @@ Usage notes:
 - Users will always be able to select "Other" to provide custom text input
 - Use multiSelect: true to allow multiple answers to be selected for a question
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+- The \`questions\` parameter MUST be an array of 1-4 question objects. Each question object must have: question (string), header (string), options (array of 2-4 option objects), multiSelect (boolean)
+- Each option object must have: label (string), description (string), and optionally preview (string)
+
+Example correct usage:
+{
+  "questions": [
+    {
+      "question": "Which approach should we use?",
+      "header": "Approach",
+      "options": [
+        { "label": "Option A (Recommended)", "description": "Faster but less flexible" },
+        { "label": "Option B", "description": "Slower but more configurable" }
+      ],
+      "multiSelect": false
+    }
+  ]
+}
+
+Common mistake to avoid:
+- NEVER pass \`questions\` as a string - it must always be an array of question objects
+- Do not call this tool repeatedly if the user hasn't answered yet - wait for their response
 
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ${EXIT_PLAN_MODE_TOOL_NAME} for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ${EXIT_PLAN_MODE_TOOL_NAME}. If you need plan approval, use ${EXIT_PLAN_MODE_TOOL_NAME} instead.
 `
