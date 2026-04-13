@@ -3001,6 +3001,8 @@ export function handleMessageFromStream(
   if (message.event.type === 'message_stop') {
     onSetStreamMode('tool-use')
     onStreamingToolUses(() => [])
+    // Clear streaming thinking at message end (in case there was no text content)
+    onStreamingThinking?.(() => null)
     return
   }
 
@@ -3021,6 +3023,8 @@ export function handleMessageFromStream(
           return
         case 'text':
           onSetStreamMode('responding')
+          // Text block starting means thinking is complete - clear streaming thinking
+          onStreamingThinking?.(() => null)
           return
         case 'tool_use': {
           onSetStreamMode('tool-input')
@@ -3080,6 +3084,11 @@ export function handleMessageFromStream(
         }
         case 'thinking_delta':
           onUpdateLength(message.event.delta.thinking)
+          // Stream thinking content progressively for real-time display
+          onStreamingThinking?.(current => ({
+            thinking: (current?.thinking ?? '') + message.event.delta.thinking,
+            isStreaming: true,
+          }))
           return
         case 'signature_delta':
           // Signatures are cryptographic authentication strings, not model
