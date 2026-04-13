@@ -431,12 +431,6 @@ export function useReplBridge(messages: Message[], setMessages: (action: React.S
                     error: 'Cannot set permission mode to bypassPermissions because it is disabled by settings or configuration'
                   };
                 }
-                if (!store.getState().toolPermissionContext.isBypassPermissionsModeAvailable) {
-                  return {
-                    ok: false,
-                    error: 'Cannot set permission mode to bypassPermissions. Enable it with --allow-dangerously-skip-permissions or set permissions.allowBypassPermissionsMode in settings.json'
-                  };
-                }
               }
               if (feature('TRANSCRIPT_CLASSIFIER') && mode === 'auto' && !isAutoModeGateEnabled()) {
                 const reason = getAutoModeUnavailableReason();
