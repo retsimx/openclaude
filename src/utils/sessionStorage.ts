@@ -16,6 +16,7 @@ import {
   writeFile,
 } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
+import { LRUCache } from 'lru-cache'
 import { basename, dirname, join } from 'path'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -4093,22 +4094,35 @@ async function loadSessionFile(sessionId: UUID): Promise<{
 
 /**
  * Gets message UUIDs for a specific session without loading all sessions.
- * Memoized to avoid re-reading the same session file multiple times.
+ * Uses LRU cache with size limit to prevent unbounded memory growth in long sessions.
+ * Cache eviction is by session count (max 50 sessions) to bound memory usage.
  */
-const getSessionMessages = memoize(
-  async (sessionId: UUID): Promise<Set<UUID>> => {
+const getSessionMessagesCache = new LRUCache<string, Promise<Set<UUID>>>({
+  max: 50,
+  // Allow cache to hold entries for ~50 active sessions. In practice,
+  // most users only have 1-3 concurrent sessions, so this provides ample
+  // headroom while preventing unbounded growth in very long sessions.
+})
+
+async function getSessionMessages(sessionId: UUID): Promise<Set<UUID>> {
+  const cached = getSessionMessagesCache.get(sessionId)
+  if (cached) {
+    return cached
+  }
+  const promise = (async () => {
     const { messages } = await loadSessionFile(sessionId)
     return new Set(messages.keys())
-  },
-  (sessionId: UUID) => sessionId,
-)
+  })()
+  getSessionMessagesCache.set(sessionId, promise)
+  return promise
+}
 
 /**
- * Clear the memoized session messages cache.
+ * Clear the session messages cache.
  * Call after compaction when old message UUIDs are no longer valid.
  */
 export function clearSessionMessagesCache(): void {
-  getSessionMessages.cache.clear?.()
+  getSessionMessagesCache.clear()
 }
 
 /**
