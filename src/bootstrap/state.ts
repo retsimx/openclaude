@@ -205,6 +205,8 @@ type State = {
   lastEmittedDate: string | null
   // Additional directories from --add-dir flag (for CLAUDE.md loading)
   additionalDirectoriesForClaudeMd: string[]
+  // Context window override from --context-window flag
+  contextWindowOverride: number | undefined
   // Channel server allowlist from --channels flag (servers whose channel
   // notifications should register this session). Parsed once in main.tsx —
   // the tag decides trust model: 'plugin' → marketplace verification +
@@ -1651,6 +1653,14 @@ export function getHasDevChannels(): boolean {
 
 export function setHasDevChannels(value: boolean): void {
   STATE.hasDevChannels = value
+}
+
+export function setContextWindowOverride(tokens: number | undefined): void {
+  STATE.contextWindowOverride = tokens
+}
+
+export function getContextWindowOverride(): number | undefined {
+  return STATE.contextWindowOverride
 }
 
 export function getPromptCache1hAllowlist(): string[] | null {
