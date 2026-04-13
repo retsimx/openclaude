@@ -876,16 +876,24 @@ export function getSettingsWithErrors(): SettingsWithErrors {
  * falling back to defaults.
  */
 /**
- * Returns true if any trusted settings source has accepted the bypass
- * permissions mode dialog. projectSettings is intentionally excluded —
+ * Returns true if bypass permissions mode is enabled.
+ * Enabled by default for all users.
+ * Can be disabled via CLAUDE_CODE_DISABLE_BYPASS_PERMISSIONS env var.
+ * projectSettings is intentionally excluded —
  * a malicious project could otherwise auto-bypass the dialog (RCE risk).
  */
 export function hasSkipDangerousModePermissionPrompt(): boolean {
-  return !!(
-    getSettingsForSource('userSettings')?.skipDangerousModePermissionPrompt ||
-    getSettingsForSource('localSettings')?.skipDangerousModePermissionPrompt ||
-    getSettingsForSource('flagSettings')?.skipDangerousModePermissionPrompt ||
-    getSettingsForSource('policySettings')?.skipDangerousModePermissionPrompt
+  // Disabled via env var
+  if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BYPASS_PERMISSIONS)) {
+    return false
+  }
+
+  // Check if any trusted settings source has explicitly disabled it
+  return !(
+    getSettingsForSource('userSettings')?.skipDangerousModePermissionPrompt === false ||
+    getSettingsForSource('localSettings')?.skipDangerousModePermissionPrompt === false ||
+    getSettingsForSource('flagSettings')?.skipDangerousModePermissionPrompt === false ||
+    getSettingsForSource('policySettings')?.skipDangerousModePermissionPrompt === false
   )
 }
 
