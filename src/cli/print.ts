@@ -4575,7 +4575,6 @@ function handleSetPermissionMode(
       })
       return toolPermissionContext
     }
-<<<<<<< HEAD
   }
 
   // Check if trying to switch to auto mode without the classifier gate
