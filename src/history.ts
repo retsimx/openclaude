@@ -18,6 +18,9 @@ import { jsonParse, jsonStringify } from './utils/slowOperations.js'
 
 const MAX_HISTORY_ITEMS = 100
 const MAX_PASTED_CONTENT_LENGTH = 1024
+// Limit pending entries to prevent memory growth during long sessions.
+// Flush is async, so this bounds memory before disk write completes.
+const MAX_PENDING_HISTORY_ENTRIES = 50
 
 /**
  * Stored paste content - either inline content or a hash reference to paste store.
@@ -404,8 +407,16 @@ async function addToPromptHistory(
 
   pendingEntries.push(logEntry)
   lastAddedEntry = logEntry
-  currentFlushPromise = flushPromptHistory(0)
-  void currentFlushPromise
+
+  // Force immediate flush if pending buffer grows too large
+  // This prevents unbounded memory growth during long sessions
+  if (pendingEntries.length >= MAX_PENDING_HISTORY_ENTRIES) {
+    // Fire-and-forget immediate flush to avoid blocking the caller
+    void immediateFlushHistory()
+  } else {
+    currentFlushPromise = flushPromptHistory(0)
+    void currentFlushPromise
+  }
 }
 
 export function addToHistory(command: HistoryEntry | string): void {
