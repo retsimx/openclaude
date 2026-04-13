@@ -144,6 +144,10 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'llama3.2:1b':              128_000,
   'qwen3:8b':                 128_000,
   'codestral':                 32_768,
+
+  // Qwen (generic - matches "qwen" and any unprefixed variants)
+  // Qwen 2.5/3.5 supports 256k context natively
+  'qwen':                     256_000,
 }
 
 /**

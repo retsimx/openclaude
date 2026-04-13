@@ -375,6 +375,21 @@ async function main(): Promise<void> {
     process.argv = [process.argv[0]!, process.argv[1]!, 'update'];
   }
 
+  // --reasoning-budget / --enable-thinking / --no-thinking:
+  // Set vLLM-compatible reasoning parameters early so all code paths see them.
+  // Defaults: thinking enabled with a budget of 4096 tokens.
+  {
+    const rbIdx = args.indexOf('--reasoning-budget')
+    if (rbIdx !== -1 && args[rbIdx + 1] && !args[rbIdx + 1]!.startsWith('--')) {
+      process.env.OPENAI_REASONING_BUDGET = args[rbIdx + 1]
+    }
+    if (args.includes('--no-thinking')) {
+      process.env.OPENAI_ENABLE_THINKING = '0'
+    } else if (args.includes('--enable-thinking')) {
+      process.env.OPENAI_ENABLE_THINKING = '1'
+    }
+  }
+
   // --bare: set SIMPLE early so gates fire during module eval / commander
   // option building (not just inside the action handler).
   if (args.includes('--bare')) {

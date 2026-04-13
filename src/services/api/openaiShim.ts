@@ -570,6 +570,7 @@ interface OpenAIStreamChunk {
       role?: string
       content?: string | null
       reasoning_content?: string | null
+      reasoning?: string | null
       tool_calls?: Array<{
         index: number
         id?: string
@@ -741,8 +742,10 @@ async function* openaiStreamToAnthropic(
 
         // Reasoning models (e.g. GLM-5, DeepSeek) may stream chain-of-thought
         // in `reasoning_content` before the actual reply appears in `content`.
+        // vLLM/Qwen uses `reasoning` instead. Support both field names.
         // Emit reasoning as a thinking block and content as a text block.
-        if (delta.reasoning_content != null && delta.reasoning_content !== '') {
+        const reasoningDelta = delta.reasoning_content ?? delta.reasoning
+        if (reasoningDelta != null && reasoningDelta !== '') {
           if (!hasEmittedThinkingStart) {
             yield {
               type: 'content_block_start',
@@ -751,11 +754,13 @@ async function* openaiStreamToAnthropic(
             }
             hasEmittedThinkingStart = true
           }
+          // Yield control back to the event loop to allow React to render
           yield {
             type: 'content_block_delta',
             index: contentBlockIndex,
-            delta: { type: 'thinking_delta', thinking: delta.reasoning_content },
+            delta: { type: 'thinking_delta', thinking: String(reasoningDelta) },
           }
+          await new Promise(resolve => setTimeout(resolve, 0))
         }
 
         // Text content — use != null to distinguish absent field from empty string,
@@ -1307,6 +1312,20 @@ class OpenAIShimMessages {
       }
     }
 
+    // Inject reasoning parameters for vLLM and other supporting endpoints.
+    // Default: thinking enabled with a 4096-token budget.
+    // Can be overridden via OPENAI_ENABLE_THINKING=0 or OPENAI_REASONING_BUDGET=<n>.
+    // Skip for GitHub Copilot / GitHub Models which have their own protocols.
+    if (!isGithubCopilot && !isGithubModels && !isGeminiMode()) {
+      const enableThinking = process.env.OPENAI_ENABLE_THINKING !== '0'
+      const rawBudget = process.env.OPENAI_REASONING_BUDGET
+      const reasoningBudget = rawBudget !== undefined ? parseInt(rawBudget, 10) : 4096
+      body.chat_template_kwargs = { enable_thinking: enableThinking }
+      if (enableThinking && !isNaN(reasoningBudget) && reasoningBudget > 0) {
+        body.reasoning_budget = reasoningBudget
+      }
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...this.defaultHeaders,
@@ -1502,6 +1521,7 @@ class OpenAIShimMessages {
             | null
             | Array<{ type?: string; text?: string }>
           reasoning_content?: string | null
+          reasoning?: string | null
           tool_calls?: Array<{
             id: string
             function: { name: string; arguments: string }
@@ -1523,17 +1543,18 @@ class OpenAIShimMessages {
     const choice = data.choices?.[0]
     const content: Array<Record<string, unknown>> = []
 
-    // Some reasoning models (e.g. GLM-5) put their chain-of-thought in
-    // reasoning_content while content stays null. Preserve it as a thinking
-    // block, but do not surface it as visible assistant text.
-    const reasoningText = choice?.message?.reasoning_content
+    // Some reasoning models (e.g. GLM-5) put their reply in reasoning_content
+    // while content stays null — emit reasoning as a thinking block, then
+    // fall back to it for visible text if content is empty.
+    // vLLM/Qwen uses `reasoning` instead of `reasoning_content`; support both.
+    const reasoningText = choice?.message?.reasoning_content ?? choice?.message?.reasoning
     if (typeof reasoningText === 'string' && reasoningText) {
       content.push({ type: 'thinking', thinking: reasoningText })
     }
     const rawContent =
       choice?.message?.content !== '' && choice?.message?.content != null
         ? choice?.message?.content
-        : null
+        : (choice?.message?.reasoning_content ?? choice?.message?.reasoning)
     if (typeof rawContent === 'string' && rawContent) {
       content.push({
         type: 'text',

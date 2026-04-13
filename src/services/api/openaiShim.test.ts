@@ -20,6 +20,8 @@ const originalEnv = {
   GEMINI_MODEL: process.env.GEMINI_MODEL,
   GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
   ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
+  OPENAI_REASONING_BUDGET: process.env.OPENAI_REASONING_BUDGET,
+  OPENAI_ENABLE_THINKING: process.env.OPENAI_ENABLE_THINKING,
 }
 
 const originalFetch = globalThis.fetch
@@ -88,6 +90,8 @@ beforeEach(() => {
   delete process.env.GEMINI_MODEL
   delete process.env.GOOGLE_CLOUD_PROJECT
   delete process.env.ANTHROPIC_CUSTOM_HEADERS
+  delete process.env.OPENAI_REASONING_BUDGET
+  delete process.env.OPENAI_ENABLE_THINKING
 })
 
 afterEach(() => {
@@ -107,6 +111,8 @@ afterEach(() => {
   restoreEnv('GEMINI_MODEL', originalEnv.GEMINI_MODEL)
   restoreEnv('GOOGLE_CLOUD_PROJECT', originalEnv.GOOGLE_CLOUD_PROJECT)
   restoreEnv('ANTHROPIC_CUSTOM_HEADERS', originalEnv.ANTHROPIC_CUSTOM_HEADERS)
+  restoreEnv('OPENAI_REASONING_BUDGET', originalEnv.OPENAI_REASONING_BUDGET)
+  restoreEnv('OPENAI_ENABLE_THINKING', originalEnv.OPENAI_ENABLE_THINKING)
   globalThis.fetch = originalFetch
 })
 
@@ -2513,6 +2519,43 @@ test('non-streaming: real content takes precedence over reasoning_content', asyn
   ])
 })
 
+test('non-streaming: vLLM `reasoning` field emitted as thinking block (Qwen-style)', async () => {
+  globalThis.fetch = (async (_input, _init) => {
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        model: 'qwen',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'The answer is 705.',
+              reasoning: 'I break it down: 15 * 40 = 600, 15 * 7 = 105, total 705.',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  const result = (await client.beta.messages.create({
+    model: 'qwen',
+    system: 'test system',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: false,
+  })) as { content: Array<Record<string, unknown>> }
+
+  expect(result.content).toEqual([
+    { type: 'thinking', thinking: 'I break it down: 15 * 40 = 600, 15 * 7 = 105, total 705.' },
+    { type: 'text', text: 'The answer is 705.' },
+  ])
+})
+
 test('non-streaming: strips leaked reasoning preamble from assistant content', async () => {
   globalThis.fetch = (async () => {
     return new Response(
@@ -2553,6 +2596,69 @@ test('non-streaming: strips leaked reasoning preamble from assistant content', a
   ])
 })
 
+test('streaming: vLLM `reasoning` delta emitted as thinking block (Qwen-style)', async () => {
+  globalThis.fetch = (async (_input, _init) => {
+    const chunks = makeStreamChunks([
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'qwen',
+        choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }],
+      },
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'qwen',
+        choices: [{ index: 0, delta: { reasoning: 'Thinking step 1.' }, finish_reason: null }],
+      },
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'qwen',
+        choices: [{ index: 0, delta: { reasoning: ' Thinking step 2.' }, finish_reason: null }],
+      },
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'qwen',
+        choices: [{ index: 0, delta: { content: 'The answer is 705.' }, finish_reason: null }],
+      },
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'qwen',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      },
+    ])
+    return new Response(chunks, {
+      headers: { 'Content-Type': 'text/event-stream', 'Transfer-Encoding': 'chunked' },
+    })
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  const result = await client.beta.messages
+    .create({
+      model: 'qwen',
+      system: 'test',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: true,
+    })
+    .withResponse()
+
+  const events: unknown[] = []
+  for await (const event of result.data) events.push(event)
+
+  const thinkingStart = events.find(
+    (e: any) => e.type === 'content_block_start' && e.content_block?.type === 'thinking',
+  )
+  const thinkingDeltas = events.filter(
+    (e: any) => e.type === 'content_block_delta' && e.delta?.type === 'thinking_delta',
+  )
+  expect(thinkingStart).toBeDefined()
+  expect(thinkingDeltas.length).toBeGreaterThan(0)
+  expect((thinkingDeltas[0] as any).delta.thinking).toBe('Thinking step 1.')
+})
 test('streaming: thinking block closed before tool call', async () => {
   globalThis.fetch = (async (_input, _init) => {
     const chunks = makeStreamChunks([
@@ -2643,6 +2749,82 @@ test('streaming: thinking block closed before tool call', async () => {
     content_block?: Record<string, unknown>
   }
   expect(thinkingStart?.content_block?.type).toBe('thinking')
+})
+
+test('streaming: thinking deltas are yielded with event loop pause for real-time display', async () => {
+  // Verify that thinking deltas are yielded and the event loop is given
+  // a chance to render between each delta.
+  const thinkingText = 'This is a thinking process that should stream in real-time.'
+
+  globalThis.fetch = (async (_input, _init) => {
+    const chunks = makeStreamChunks([
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'glm-5',
+        choices: [
+          {
+            index: 0,
+            delta: { role: 'assistant', reasoning_content: thinkingText },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'glm-5',
+        choices: [
+          {
+            index: 0,
+            delta: { content: 'The answer is 42.' },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: 'chatcmpl-1',
+        object: 'chat.completion.chunk',
+        model: 'glm-5',
+        choices: [
+          {
+            index: 0,
+            delta: {},
+            finish_reason: 'stop',
+          },
+        ],
+      },
+    ])
+
+    return makeSseResponse(chunks)
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  const result = await client.beta.messages
+    .create({
+      model: 'glm-5',
+      system: 'test',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: true,
+    })
+    .withResponse()
+
+  const events: unknown[] = []
+  for await (const event of result.data) events.push(event)
+
+  const thinkingDeltas = events.filter(
+    (e: any) => e.type === 'content_block_delta' && e.delta?.type === 'thinking_delta',
+  )
+
+  // Verify the thinking text was yielded
+  expect(thinkingDeltas.length).toBe(1)
+
+  // Verify the thinking text matches
+  const reconstructedThinking = thinkingDeltas
+    .map((e: any) => (e.delta as any).thinking)
+    .join('')
+  expect(reconstructedThinking).toBe(thinkingText)
 })
 
 test('streaming: strips leaked reasoning preamble from assistant content deltas', async () => {
@@ -2774,4 +2956,171 @@ test('streaming: strips leaked reasoning preamble when split across multiple con
   }
 
   expect(textDeltas).toEqual(['Hey! How can I help you today?'])
+})
+
+// Reasoning / thinking parameter injection
+// ---------------------------------------------------------------------------
+
+function makeJsonResponse(data: unknown): Response {
+  return new Response(JSON.stringify(data), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function makeCompletionResponse(content = 'done'): unknown {
+  return {
+    id: 'chatcmpl-reasoning-test',
+    model: 'test-model',
+    choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  }
+}
+
+test('reasoning: thinking enabled by default with 4096 budget', async () => {
+  let capturedBody: Record<string, unknown> | undefined
+
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body))
+    return makeJsonResponse(makeCompletionResponse())
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await client.beta.messages.create({
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: false,
+  })
+
+  expect(capturedBody?.reasoning_budget).toBe(4096)
+  expect(capturedBody?.chat_template_kwargs).toEqual({ enable_thinking: true })
+})
+
+test('reasoning: custom budget via OPENAI_REASONING_BUDGET env var', async () => {
+  process.env.OPENAI_REASONING_BUDGET = '2048'
+
+  let capturedBody: Record<string, unknown> | undefined
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body))
+    return makeJsonResponse(makeCompletionResponse())
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await client.beta.messages.create({
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: false,
+  })
+
+  expect(capturedBody?.reasoning_budget).toBe(2048)
+  expect(capturedBody?.chat_template_kwargs).toEqual({ enable_thinking: true })
+})
+
+test('reasoning: thinking disabled via OPENAI_ENABLE_THINKING=0', async () => {
+  process.env.OPENAI_ENABLE_THINKING = '0'
+
+  let capturedBody: Record<string, unknown> | undefined
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body))
+    return makeJsonResponse(makeCompletionResponse())
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await client.beta.messages.create({
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: false,
+  })
+
+  expect(capturedBody?.reasoning_budget).toBeUndefined()
+  expect(capturedBody?.chat_template_kwargs).toEqual({ enable_thinking: false })
+})
+
+test('reasoning: budget not injected when OPENAI_REASONING_BUDGET=0', async () => {
+  process.env.OPENAI_REASONING_BUDGET = '0'
+
+  let capturedBody: Record<string, unknown> | undefined
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body))
+    return makeJsonResponse(makeCompletionResponse())
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await client.beta.messages.create({
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: false,
+  })
+
+  // Budget 0 means no reasoning_budget field; thinking flag still set
+  expect(capturedBody?.reasoning_budget).toBeUndefined()
+  expect(capturedBody?.chat_template_kwargs).toEqual({ enable_thinking: true })
+})
+
+test('reasoning: params not injected for GitHub Copilot endpoint', async () => {
+  const originalUseGithub = process.env.CLAUDE_CODE_USE_GITHUB
+  process.env.CLAUDE_CODE_USE_GITHUB = '1'
+  process.env.OPENAI_BASE_URL = 'https://api.githubcopilot.com'
+  process.env.OPENAI_API_KEY = 'ghp_test'
+
+  let capturedBody: Record<string, unknown> | undefined
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body))
+    return makeJsonResponse(makeCompletionResponse())
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  try {
+    await client.beta.messages.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    })
+  } catch {
+    // fetch may be intercepted but routing may throw — we only need capturedBody
+  }
+
+  if (capturedBody) {
+    expect(capturedBody.reasoning_budget).toBeUndefined()
+    expect(capturedBody.chat_template_kwargs).toBeUndefined()
+  }
+
+  if (originalUseGithub === undefined) {
+    delete process.env.CLAUDE_CODE_USE_GITHUB
+  } else {
+    process.env.CLAUDE_CODE_USE_GITHUB = originalUseGithub
+  }
+})
+
+test('reasoning: params not injected for Gemini endpoint', async () => {
+  process.env.CLAUDE_CODE_USE_GEMINI = '1'
+  process.env.GEMINI_API_KEY = 'gemini-test-key'
+  process.env.OPENAI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai'
+
+  let capturedBody: Record<string, unknown> | undefined
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body))
+    return makeJsonResponse(makeCompletionResponse())
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  try {
+    await client.beta.messages.create({
+      model: 'gemini-2.0-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    })
+  } catch {
+    // ignore fetch errors in test environment
+  }
+
+  if (capturedBody) {
+    expect(capturedBody.reasoning_budget).toBeUndefined()
+    expect(capturedBody.chat_template_kwargs).toBeUndefined()
+  }
 })

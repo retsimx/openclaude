@@ -58,6 +58,14 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
 ): number {
+  // Allow override via CLI flag --context-window (highest priority)
+  // This takes precedence over all other context window resolution.
+  const { getContextWindowOverride } = require('../bootstrap/state.js')
+  const cliOverride = getContextWindowOverride()
+  if (cliOverride !== undefined && cliOverride > 0) {
+    return cliOverride
+  }
+
   // Allow override via environment variable (internal-only)
   // This takes precedence over all other context window resolution, including 1M detection,
   // so users can cap the effective context window for local decisions (auto-compact, etc.)
