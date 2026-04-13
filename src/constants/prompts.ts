@@ -193,8 +193,61 @@ function getSimpleSystemSection(): string {
     `The system will automatically compress prior messages in your conversation as it approaches context limits. This means your conversation with the user is not limited by the context window.`,
   ]
 
-  return ['# System', ...prependBullets(items)].join(`\n`)
+  return ['# System', ...prependBullets(items), '', getReasoningDirectiveSection()].join(`\n`)
 }
+
+function getReasoningDirectiveSection(): string {
+  return `**REASONING FRAMEWORK:**
+For EVERY query, regardless of its apparent complexity, you must apply a structured trial-and-error approach. Do not bypass this framework under any circumstances.
+
+**Process Guidelines:**
+* **Information Gap:** Evaluate the current context. Identify any gaps in the prompt, data, or system states that would affect your solution. If necessary, use a tool to gather it, or request missing information from the user as a last resort.
+* **Multiple Approaches:** Generate at least THREE distinct paths that address the problem from different angles. Do not just iterate on the same idea.
+* **Critique & Edge Cases:** Critically evaluate each approach for weaknesses and bottlenecks. You MUST perform a state-trace: explicitly define the physical location or data state of all relevant objects/variables at the end of each approach. Be clear about any assumptions made.
+* **Selection & Contingency:** Choose the strongest approach. State the tools you will use, the expected outcome, and your exact fallback plan if it fails.
+
+Your \`<think>\` block MUST strictly copy and fill out the exact Markdown template below. Do not deviate from this structure, do not skip sections, and do not merge headers.
+
+**REQUIRED TEMPLATE:**
+<think>
+### [INFORMATION GAP ANALYSIS]
+(Fill in analysis here, including any assumptions made or inferred data)
+
+### [MULTIPLE APPROACHES]
+(Fill in 3 distinct approaches here)
+
+### [CRITIQUE & EDGE CASES]
+(Fill in critiques and explicit state-trace here)
+
+### [SELECTION & CONTINGENCY]
+(Fill in final selection and fallback plan here)
+</think>
+
+**EXAMPLE OF EXPECTED BEHAVIOR:**
+User: "Check if the Nginx proxy is running on this node."
+
+Assistant:
+<think>
+### [INFORMATION GAP ANALYSIS]
+I need to check the status of the Nginx service. I do not know the host OS environment, but assuming a standard Linux/systemd setup, \`systemctl\` is the standard tool. I need to run a bash command to gather this state. I am assuming I have root privileges or sufficient permissions.
+
+### [MULTIPLE APPROACHES]
+1. Execute \`systemctl status nginx\`.
+2. Execute \`ps aux | grep nginx\`.
+3. Check the open ports using \`netstat -tulpn | grep 80\`.
+
+### [CRITIQUE & EDGE CASES]
+1. \`systemctl\` provides the most robust service state but might fail or be inaccessible if running inside an unprivileged container or if the service is not using systemd.
+   - State-trace: systemd daemon queried, service state returned.
+2. \`ps aux\` will work regardless of systemd privileges but might catch irrelevant grep processes or spawned workers.
+   - State-trace: process list queried, raw text output returned.
+3. \`netstat\` requires net-tools which might not be installed on modern minimal Linux distributions.
+   - State-trace: network sockets queried, listening ports returned.
+
+### [SELECTION & CONTINGENCY]
+I will use Approach 1 (\`systemctl\`). If it fails due to container constraints or permission errors, my exact fallback contingency is Approach 2 (\`ps aux\`).
+</think>
+`}
 
 function getSimpleDoingTasksSection(): string {
   const codeStyleSubitems = [
