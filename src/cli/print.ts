@@ -4575,18 +4575,7 @@ function handleSetPermissionMode(
       })
       return toolPermissionContext
     }
-    if (!toolPermissionContext.isBypassPermissionsModeAvailable) {
-      output.enqueue({
-        type: 'control_response',
-        response: {
-          subtype: 'error',
-          request_id: requestId,
-          error:
-            'Cannot set permission mode to bypassPermissions. Enable it with --allow-dangerously-skip-permissions or set permissions.allowBypassPermissionsMode in settings.json',
-        },
-      })
-      return toolPermissionContext
-    }
+<<<<<<< HEAD
   }
 
   // Check if trying to switch to auto mode without the classifier gate

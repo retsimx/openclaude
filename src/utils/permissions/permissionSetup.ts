@@ -937,11 +937,8 @@ export async function initializeToolPermissionContext({
   const settings = getSettings_DEPRECATED() || {}
   const settingsDisableBypassPermissionsMode =
     settings.permissions?.disableBypassPermissionsMode === 'disable'
-  const settingsAllowBypassPermissionsMode = hasAllowBypassPermissionsMode()
+  // Bypass permissions mode is always available (unless disabled by killswitch or settings)
   const isBypassPermissionsModeAvailable =
-    (permissionMode === 'bypassPermissions' ||
-      allowDangerouslySkipPermissions ||
-      settingsAllowBypassPermissionsMode) &&
     !growthBookDisableBypassPermissionsMode &&
     !settingsDisableBypassPermissionsMode
 
