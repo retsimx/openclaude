@@ -8,6 +8,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
+import { normalizeToolArguments } from 'src/services/api/toolArgumentNormalization.js'
 import {
   extractMcpToolDetails,
   extractSkillName,
@@ -411,7 +412,12 @@ export async function* runToolUse(
     return
   }
 
-  const toolInput = toolUse.input as { [key: string]: string }
+  // Normalize tool input to fix malformed Qwen tool calls (e.g., AskUserQuestion with questions as string)
+  const rawInput = toolUse.input as { [key: string]: string }
+  const toolInput = normalizeToolArguments(
+    tool.name,
+    JSON.stringify(rawInput),
+  ) as { [key: string]: string }
   try {
     if (toolUseContext.abortController.signal.aborted) {
       logEvent('tengu_tool_use_cancelled', {
