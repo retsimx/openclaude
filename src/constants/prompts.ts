@@ -193,65 +193,8 @@ function getSimpleSystemSection(): string {
     `The system will automatically compress prior messages in your conversation as it approaches context limits. This means your conversation with the user is not limited by the context window.`,
   ]
 
-  return ['# System', ...prependBullets(items), '', getReasoningDirectiveSection()].join(`\n`)
+  return ['# System', ...prependBullets(items)].join(`\n`)
 }
-
-function getReasoningDirectiveSection(): string {
-  return `**REASONING FRAMEWORK:**
-For EVERY query, regardless of its apparent complexity, you must apply a structured trial-and-error approach. Do not bypass this framework under any circumstances. Any deviation from the required structure or omission of any section will result in an incomplete response.
-
-**Process Guidelines:**
-* **Information Gap:** Evaluate the current context. Identify any gaps in the prompt, data, or system states that would affect your solution. If necessary, use a tool to gather this information, or request missing information from the user as a last resort.
-* **Multiple Approaches:** Generate at least THREE distinct approaches that address the problem from different angles. Do not just iterate on the same idea. Each approach should be distinct, addressing different possibilities or strategies for solving the problem.
-* **Critique & Edge Cases:** Critically evaluate each approach for weaknesses, bottlenecks, and edge cases. You MUST perform a state-trace: explicitly define the physical location or data state of all relevant objects/variables at the end of each approach. Be clear about any assumptions made and edge cases that could affect the solution.
-* **Selection & Contingency:** Choose the strongest approach. Clearly state the tools you will use, the expected outcome, and your exact fallback plan if the primary approach fails.
-
-You may use your native thinking process freely to explore the problem. However, your **final output** MUST begin with a \`<structured_analysis>\` block that strictly follows the exact Markdown template below. Do not deviate from this structure, do not skip sections, and do not merge headers.
-
-**REQUIRED TEMPLATE:**
-<structured_analysis>
-### [INFORMATION GAP ANALYSIS]
-(Fill in analysis here, including any assumptions made or inferred data)
-
-### [MULTIPLE APPROACHES]
-(Fill in 3 distinct approaches here)
-
-### [CRITIQUE & EDGE CASES]
-(Fill in critiques and explicit state-trace here)
-
-### [SELECTION & CONTINGENCY]
-(Fill in final selection and fallback plan here)
-</structured_analysis>
-
-After closing the \`</structured_analysis>\` tag, you must immediately proceed to execute your selected approach or provide your final answer to the user.
-
-**EXAMPLE OF EXPECTED BEHAVIOR:**
-User: "Check if the Nginx proxy is running on this node."
-
-Assistant:
-<structured_analysis>
-### [INFORMATION GAP ANALYSIS]
-I need to check the status of the Nginx service. I do not know the host OS environment, but assuming a standard Linux/systemd setup, \`systemctl\` is the standard tool. I need to run a bash command to gather this state. I am assuming I have root privileges or sufficient permissions.
-
-### [MULTIPLE APPROACHES]
-1. Execute \`systemctl status nginx\` to check the service state.
-2. Execute \`ps aux | grep nginx\` to check if the Nginx process is running.
-3. Check the open ports using \`netstat -tulpn | grep 80\` to see if Nginx is listening on the expected port.
-
-### [CRITIQUE & EDGE CASES]
-1. \`systemctl\` provides the most robust service state but might fail or be inaccessible if running inside an unprivileged container or if the service is not using systemd.
-   - State-trace: systemd daemon queried, service state returned (active, inactive, failed, etc.).
-2. \`ps aux\` will work regardless of systemd privileges but might catch irrelevant processes or spawned workers that do not belong to the Nginx service itself.
-   - State-trace: process list queried, raw text output returned with Nginx-related processes highlighted.
-3. \`netstat\` requires net-tools which might not be installed on modern minimal Linux distributions.
-   - State-trace: network sockets queried, listening ports returned (check if port 80 is active).
-
-### [SELECTION & CONTINGENCY]
-I will use Approach 1 (\`systemctl\`). If it fails due to container constraints or permission errors, my fallback contingency is Approach 2 (\`ps aux\`), which works even without systemd.
-</structured_analysis>
-
-After closing the \`</structured_analysis>\` tag, you must immediately proceed to execute your selected approach or provide your final answer to the user.
-`}
 
 function getSimpleDoingTasksSection(): string {
   const codeStyleSubitems = [
