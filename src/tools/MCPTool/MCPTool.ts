@@ -1,4 +1,5 @@
 import { Ajv } from 'ajv'
+import addFormats from 'ajv-formats'
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef, type ValidationResult } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -38,7 +39,13 @@ export type Output = z.infer<OutputSchema>
 // Re-export MCPProgress from centralized types to break import cycles
 export type { MCPProgress } from '../../types/tools.js'
 
+// Initialize AJV with support for all JSON Schema draft versions
 const ajv = new Ajv({ strict: false })
+addFormats(ajv)
+// Add JSON Schema Draft 2020-12 meta-schema and its dependent subschemas
+// to support MCP servers that use this schema standard (e.g., Playwright MCP server)
+const addMetaSchema2020 = require('ajv/dist/refs/json-schema-2020-12').default
+addMetaSchema2020.call(ajv)
 
 // Cache compiled validators to avoid recompiling on every validateInput call.
 // AJV compilation is expensive — schemas don't change between calls.
