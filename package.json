@@ -75,6 +75,7 @@
     "@opentelemetry/sdk-trace-node": "2.6.1",
     "@opentelemetry/semantic-conventions": "1.40.0",
     "ajv": "8.18.0",
+    "ajv-formats": "^3.0.1",
     "auto-bind": "5.0.1",
     "axios": "1.15.0",
     "bidi-js": "1.0.3",
