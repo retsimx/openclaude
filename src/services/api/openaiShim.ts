@@ -1050,13 +1050,11 @@ async function* openaiStreamToAnthropic(
             }
             hasEmittedThinkingStart = true
           }
-          // Yield control back to the event loop to allow React to render
           yield {
             type: 'content_block_delta',
             index: contentBlockIndex,
             delta: { type: 'thinking_delta', thinking: String(reasoningDelta) },
           }
-          await new Promise(resolve => setTimeout(resolve, 0))
         }
 
         // Text content — use != null to distinguish absent field from empty string,
