@@ -995,6 +995,24 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Whether the user has accepted the bypass permissions mode dialog',
         ),
+      providers: z
+        .object({
+          openai: z
+            .object({
+              temperature: z.number().optional().describe('Default temperature for OpenAI-compatible providers'),
+              top_p: z.number().optional().describe('Default top_p for OpenAI-compatible providers'),
+              top_k: z.number().optional().describe('Default top_k for OpenAI-compatible providers'),
+              min_p: z.number().optional().describe('Default min_p for OpenAI-compatible providers'),
+              presence_penalty: z.number().optional().describe('Default presence_penalty for OpenAI-compatible providers'),
+              repetition_penalty: z.number().optional().describe('Default repetition_penalty for OpenAI-compatible providers'),
+            })
+            .passthrough()
+            .optional()
+            .describe('Provider-specific configuration (e.g. OpenAI-compatible API parameters)'),
+        })
+        .passthrough()
+        .optional()
+        .describe('Custom provider settings'),
       ...(feature('TRANSCRIPT_CLASSIFIER')
         ? {
             skipAutoPermissionPrompt: z

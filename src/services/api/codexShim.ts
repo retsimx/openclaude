@@ -476,6 +476,7 @@ export async function performCodexRequest(options: {
   credentials: ResolvedCodexCredentials
   params: ShimCreateParams
   defaultHeaders: Record<string, string>
+  providerConfig?: Record<string, unknown>
   signal?: AbortSignal
 }): Promise<Response> {
   const compressedMessages = compressToolHistory(
@@ -500,6 +501,7 @@ export async function performCodexRequest(options: {
         ],
     store: false,
     stream: true,
+    ...(options.providerConfig || {}),
   }
 
   const instructions = convertSystemPrompt(options.params.system)
