@@ -23,6 +23,7 @@ import {
   isGithubNativeAnthropicMode,
 } from 'src/utils/model/providers.js'
 import { getProxyFetchOptions } from 'src/utils/proxy.js'
+import { getSettingsForSource } from '../../utils/settings/settings.js'
 import {
   getIsNonInteractiveSession,
   getSessionId,
@@ -246,6 +247,10 @@ export async function getAnthropicClient({
       fetch: resolvedFetch,
     }),
   }
+  // Read OpenAI-compatible provider config from settings
+  const settings = getSettingsForSource('userSettings')
+  const providerConfig = settings?.providers?.openai as Record<string, unknown> | undefined
+
   // Agent routing override: use per-agent provider when configured.
   // Strip auth-related headers to prevent leaking Anthropic credentials
   // to third-party endpoints (SSRF / credential forwarding mitigation).
@@ -263,6 +268,7 @@ export async function getAnthropicClient({
       timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
       providerOverride,
       reasoningEffort: shimReasoningEffort,
+      providerConfig,
     }) as unknown as Anthropic
   }
   // GitHub provider in native Anthropic API mode: send requests in Anthropic
@@ -308,6 +314,7 @@ export async function getAnthropicClient({
       maxRetries,
       timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
       reasoningEffort: shimReasoningEffort,
+      providerConfig,
     }) as unknown as Anthropic
   }
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {

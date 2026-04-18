@@ -1362,11 +1362,13 @@ class OpenAIShimMessages {
   private defaultHeaders: Record<string, string>
   private reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   private providerOverride?: { model: string; baseURL: string; apiKey: string }
+  private providerConfig?: Record<string, unknown>
 
-  constructor(defaultHeaders: Record<string, string>, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', providerOverride?: { model: string; baseURL: string; apiKey: string }) {
+  constructor(defaultHeaders: Record<string, string>, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', providerOverride?: { model: string; baseURL: string; apiKey: string }, providerConfig?: Record<string, unknown>) {
     this.defaultHeaders = filterAnthropicHeaders(defaultHeaders)
     this.reasoningEffort = reasoningEffort
     this.providerOverride = providerOverride
+    this.providerConfig = providerConfig
   }
 
   create(
@@ -1530,6 +1532,7 @@ class OpenAIShimMessages {
           ...this.defaultHeaders,
           ...filterAnthropicHeaders(options?.headers),
         },
+        providerConfig: this.providerConfig,
         signal: options?.signal,
       })
     }
@@ -1573,6 +1576,7 @@ class OpenAIShimMessages {
       messages: openaiMessages,
       stream: params.stream ?? false,
       store: false,
+      ...(this.providerConfig || {}),
     }
     // Emit reasoning_effort for chat_completions when the resolved provider
      // request carries a reasoning effort (set via /effort, model alias default,
@@ -2235,7 +2239,7 @@ class OpenAIShimMessages {
     const rawContent =
       choice?.message?.content !== '' && choice?.message?.content != null
         ? choice?.message?.content
-        : (choice?.message?.reasoning_content ?? choice?.message?.reasoning)
+        : undefined
     if (typeof rawContent === 'string' && rawContent) {
       content.push({
         type: 'text',
@@ -2315,8 +2319,8 @@ class OpenAIShimBeta {
   messages: OpenAIShimMessages
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
 
-  constructor(defaultHeaders: Record<string, string>, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', providerOverride?: { model: string; baseURL: string; apiKey: string }) {
-    this.messages = new OpenAIShimMessages(defaultHeaders, reasoningEffort, providerOverride)
+  constructor(defaultHeaders: Record<string, string>, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', providerOverride?: { model: string; baseURL: string; apiKey: string }, providerConfig?: Record<string, unknown>) {
+    this.messages = new OpenAIShimMessages(defaultHeaders, reasoningEffort, providerOverride, providerConfig)
     this.reasoningEffort = reasoningEffort
   }
 }
@@ -2327,6 +2331,7 @@ export function createOpenAIShimClient(options: {
   timeout?: number
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   providerOverride?: { model: string; baseURL: string; apiKey: string }
+  providerConfig?: Record<string, unknown>
 }): unknown {
   hydrateGeminiAccessTokenFromSecureStorage()
   hydrateGithubModelsTokenFromSecureStorage()
@@ -2334,7 +2339,7 @@ export function createOpenAIShimClient(options: {
 
   const beta = new OpenAIShimBeta({
     ...(options.defaultHeaders ?? {}),
-  }, options.reasoningEffort, options.providerOverride)
+  }, options.reasoningEffort, options.providerOverride, options.providerConfig)
 
   return {
     beta,
