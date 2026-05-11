@@ -3246,7 +3246,7 @@ test('non-streaming: strips <think> tag block from assistant content', async () 
           {
             message: {
               role: 'assistant',
-              content: 'I'm thinking...\n\nThe answer is 42.',
+              content: "I'm thinking...\n\nThe answer is 42.",
             },
             finish_reason: 'stop',
           },
@@ -3638,31 +3638,6 @@ test('streaming: thinking deltas are yielded with event loop pause for real-time
     .map((e: any) => (e.delta as any).thinking)
     .join('')
   expect(reconstructedThinking).toBe(thinkingText)
-})
-
-    return makeSseResponse(chunks)
-  }) as FetchType
-
-  const client = createOpenAIShimClient({}) as OpenAIShimClient
-  const result = await client.beta.messages
-    .create({
-      model: 'gpt-5-mini',
-      system: 'test system',
-      messages: [{ role: 'user', content: 'hey' }],
-      max_tokens: 64,
-      stream: true,
-    })
-    .withResponse()
-
-  const textDeltas: string[] = []
-  for await (const event of result.data) {
-    const delta = (event as { delta?: { type?: string; text?: string } }).delta
-    if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
-      textDeltas.push(delta.text)
-    }
-  }
-
-  expect(textDeltas.join('')).toBe('Hey! How can I help you today?')
 })
 
 test('streaming: strips <think> tag split across multiple content chunks', async () => {
