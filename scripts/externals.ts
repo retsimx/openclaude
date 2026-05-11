@@ -92,6 +92,7 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'xss',
   // Data utilities
   'ajv',
+  'ajv-formats',
   'auto-bind',
   'diff',
   'fflate',
